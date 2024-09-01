@@ -6,6 +6,7 @@ Usage:
 
 Options:
     --Nx=<Nx>              Horizontal modes; default is aspect x Nz
+    --Ny=<Ny>              Horizontal modes; default is aspect x Nz
     --Nz=<Nz>              Vertical modes [default: 64]
     --aspect=<aspect>      Aspect ratio of domain [default: 4]
 
@@ -13,6 +14,8 @@ Options:
 
     --run_time_iter=<iter>      How many iterations to run for
     --run_time_simtime=<run>    How long (simtime) to run for
+
+    --mesh=<mesh>               Parallel decomposition mesh
 
     --label=<label>             Additional label for run output directory
 """
@@ -32,22 +35,25 @@ nproc = MPI.COMM_WORLD.size
 # Parameters
 aspect = float(args['--aspect'])
 # Parameters
-Lx, Lz = aspect, 1
+Lx, Ly, Lz = aspect, aspect, 1
 Nz = int(args['--Nz'])
 if args['--Nx']:
     Nx = int(args['--Nx'])
 else:
     Nx = int(aspect*Nz)
+if args['--Ny']:
+    Ny = int(args['--Ny'])
+else:
+    Ny = int(aspect*Nz)
 
 data_dir = './'+sys.argv[0].split('.py')[0]
 data_dir += f'_Ra{args["--Rayleigh"]}'
-data_dir += f'_Nz{Nz}_Nx{Nx}'
+data_dir += f'_Nz{Nz}_Nx{Nx}_Ny{Ny}'
 data_dir += f'_a{aspect}'
 if args['--label']:
     data_dir += '_{:s}'.format(args['--label'])
 import dedalus.tools.logging as dedalus_logging
 dedalus_logging.add_file_handler(data_dir+'/logs/dedalus_log', 'DEBUG')
-
 
 Rayleigh = float(args['--Rayleigh'])
 Prandtl = 1
@@ -66,22 +72,33 @@ timestepper = d3.SBDF2 #d3.RK222
 max_timestep = 0.125
 dtype = np.float64
 
+mesh = args['--mesh']
+if mesh is not None:
+    mesh = mesh.split(',')
+    mesh = [int(mesh[0]), int(mesh[1])]
+else:
+    log2 = np.log2(nproc)
+    if log2 == int(log2):
+        mesh = [int(2**np.ceil(log2/2)),int(2**np.floor(log2/2))]
+logger.info("running on processor mesh={}".format(mesh))
+
 # Bases
-coords = d3.CartesianCoordinates('y', 'x', 'z', right_handed=False)
-dist = d3.Distributor(coords, mesh=[1,nproc], dtype=dtype)
+coords = d3.CartesianCoordinates('x', 'y', 'z')
+dist = d3.Distributor(coords, mesh=mesh, dtype=dtype)
 xbasis = d3.RealFourier(coords['x'], size=Nx, bounds=(0, Lx), dealias=dealias)
+ybasis = d3.RealFourier(coords['y'], size=Ny, bounds=(0, Ly), dealias=dealias)
 zbasis = d3.ChebyshevT(coords['z'], size=Nz, bounds=(0, Lz), dealias=dealias)
 
 # Fields
-p = dist.Field(name='p', bases=(xbasis,zbasis))
-b = dist.Field(name='b', bases=(xbasis,zbasis))
-u = dist.VectorField(coords, name='u', bases=(xbasis,zbasis))
+p = dist.Field(name='p', bases=(xbasis,ybasis,zbasis))
+b = dist.Field(name='b', bases=(xbasis,ybasis,zbasis))
+u = dist.VectorField(coords, name='u', bases=(xbasis,ybasis,zbasis))
 tau_c0 = dist.Field(name='tau_c0')
 tau_c1 = dist.Field(name='tau_c1')
-tau_b1 = dist.Field(name='tau_b1', bases=xbasis)
-tau_b2 = dist.Field(name='tau_b2', bases=xbasis)
-tau_u1 = dist.VectorField(coords, name='tau_u1', bases=xbasis)
-tau_u2 = dist.VectorField(coords, name='tau_u2', bases=xbasis)
+tau_b1 = dist.Field(name='tau_b1', bases=(xbasis,ybasis))
+tau_b2 = dist.Field(name='tau_b2', bases=(xbasis,ybasis))
+tau_u1 = dist.VectorField(coords, name='tau_u1', bases=(xbasis,ybasis))
+tau_u2 = dist.VectorField(coords, name='tau_u2', bases=(xbasis,ybasis))
 taus = [tau_c0, tau_c1, tau_b1, tau_b2, tau_u1, tau_u2]
 
 # Substitutions
@@ -93,7 +110,7 @@ lift_basis = zbasis.derivative_basis(2)
 lift = lambda A, n: d3.Lift(A, lift_basis, n)
 lift_basis1 = zbasis.derivative_basis(1)
 lift1 = lambda A, n: d3.Lift(A, lift_basis1, n)
-V = Lx*Lz
+V = Lx*Ly*Lz
 volavg = lambda A: d3.integ(A)/V
 
 ω = d3.curl(u)
@@ -116,13 +133,14 @@ problem.add_equation("u(z=Lz) = 0")
 problem.add_equation("integ(p) = 0") # Pressure gauge
 
 # Solver
-solver = problem.build_solver(timestepper, enforce_real_cadence=np.inf)
+solver = problem.build_solver(timestepper)
 solver.stop_sim_time = stop_sim_time
 solver.stop_iteration = stop_iter
 
 # Initial conditions
 b.fill_random('g', seed=42, distribution='normal', scale=1e-3) # Random noise
 b.low_pass_filter(scales=0.75)
+
 b['g'] *= z * (Lz - z) # Damp noise at walls
 
 # Analysis
@@ -158,10 +176,6 @@ try:
     while solver.proceed:
         timestep = CFL.compute_timestep()
         solver.step(timestep)
-        if (solver.iteration-1) % 1000 == 0:
-            for var in vars:
-                var['g']
-                var['c']
         if (solver.iteration-1) % 10 == 0:
             max_Re = flow.max('Re')
             max_divu = flow.max('|div_u|')
