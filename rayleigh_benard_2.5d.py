@@ -11,8 +11,8 @@ Options:
 
     --Rayleigh=<Rayleigh>       Rayleigh number [default: 1e6]
 
-    --run_time_iter=<iter>      How many iterations to run for
-    --run_time_simtime=<run>    How long (simtime) to run for
+    --run_time_iter=<iter>      How many iterations to run for; defaults to np.inf
+    --run_time_simtime=<run>    How long (simtime) to run for [default: 100]
 
     --label=<label>             Additional label for run output directory
 """
@@ -53,16 +53,14 @@ Rayleigh = float(args['--Rayleigh'])
 Prandtl = 1
 dealias = 3/2
 
-if args['--run_time_simtime']:
-    stop_sim_time = float(args['--run_time_simtime'])
-else:
-    stop_sim_time = 50
+stop_sim_time = float(args['--run_time_simtime'])
 if args['--run_time_iter']:
     stop_iter = int(float(args['--run_time_iter']))
 else:
     stop_iter = np.inf
 
 timestepper = d3.SBDF2 #d3.RK222
+safety = 0.2
 max_timestep = 0.125
 dtype = np.float64
 
@@ -106,7 +104,7 @@ tau_u = lift(tau_u1, -1) + lift(tau_u2, -2)
 vars = [p, b, u]
 problem = d3.IVP(vars + taus, namespace=locals())
 problem.add_equation("div(u) + tau_d = 0")
-problem.add_equation("dt(b) - kappa*lap(b) - ez@u + tau_b = - u@grad(b)")
+problem.add_equation("dt(b) - kappa*lap(b) - ez@u + tau_b = - (u@grad(b))")
 problem.add_equation("dt(u) - nu*lap(u) + grad(p) - b*ez + tau_u = cross(u, ω)")
 problem.add_equation("b(z=0) = 0")
 problem.add_equation("u(z=0) = 0")
@@ -125,11 +123,10 @@ b.fill_random('g', seed=42, distribution='normal', scale=1e-3) # Random noise
 b.low_pass_filter(scales=0.75)
 b['g'] *= z * (Lz - z) # Damp noise at walls
 
-# Analysis
-# snapshots = solver.evaluator.add_file_handler(data_dir+'/snapshots', iter=100)
-# snapshots.add_task(b, name='buoyancy')
-# snapshots.add_task(ω, name='vorticity')
-# snapshots.add_task(d3.div(u), name='divergence')
+snapshots = solver.evaluator.add_file_handler(data_dir+'/snapshots', sim_dt=1, max_writes=20)
+snapshots.add_task(b, name='buoyancy')
+snapshots.add_task(ω, name='vorticity')
+snapshots.add_task(d3.div(u), name='divergence')
 
 scalars = solver.evaluator.add_file_handler(data_dir+'/scalars', iter=10)
 scalars.add_task(volavg(np.sqrt(u@u)/nu), name='Re')
@@ -141,7 +138,7 @@ scalars.add_task(np.sqrt(volavg(tau_b**2)), name='|tau_b|')
 
 # CFL
 CFL = d3.CFL(solver, initial_dt=max_timestep,
-             cadence=10, safety=0.5, threshold=0.05,
+             cadence=1, safety=safety, threshold=0.05,
              max_change=1.5, min_change=0.5, max_dt=max_timestep)
 CFL.add_velocity(u)
 
