@@ -123,9 +123,13 @@ b.fill_random('g', seed=42, distribution='normal', scale=1e-3) # Random noise
 b.low_pass_filter(scales=0.75)
 b['g'] *= z * (Lz - z) # Damp noise at walls
 
+b0 = dist.Field(name='b0', bases=(xbasis,zbasis))
+b0['g'] = 1 + z
+
 snapshots = solver.evaluator.add_file_handler(data_dir+'/snapshots', sim_dt=1, max_writes=20)
 snapshots.add_task(b, name='buoyancy')
-snapshots.add_task(ω, name='vorticity')
+snapshots.add_task(b+b0, name='full buoyancy')
+snapshots.add_task(ey@ω, name='vorticity')
 snapshots.add_task(d3.div(u), name='divergence')
 
 scalars = solver.evaluator.add_file_handler(data_dir+'/scalars', iter=10)
