@@ -124,7 +124,7 @@ b.low_pass_filter(scales=0.75)
 b['g'] *= z * (Lz - z) # Damp noise at walls
 
 b0 = dist.Field(name='b0', bases=(xbasis,zbasis))
-b0['g'] = 1 + z
+b0['g'] = 1 - z
 
 snapshots = solver.evaluator.add_file_handler(data_dir+'/snapshots', sim_dt=1, max_writes=20)
 snapshots.add_task(b, name='buoyancy')
