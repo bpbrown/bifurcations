@@ -9,7 +9,6 @@ Options:
     --tasks=<tasks>    Tasks to plot [default: buoyancy,full buoyancy,vorticity]
     --3D_default       plots default 3-D fields
 """
-
 import h5py
 import numpy as np
 import matplotlib
@@ -18,6 +17,9 @@ import matplotlib.pyplot as plt
 
 import logging
 logger = logging.getLogger(__name__)
+
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 # Plot settings
 dpi = 300
@@ -34,18 +36,23 @@ def main(filename, start, count, tasks, output):
             title = task
             cmap = None
             file_name = task
-            if task.startswith('vorticity'):
+            if 'vorticity' in task:
                 center_zero = True
                 title = r'$\omega$'
                 cmap = 'PuOr'
-            elif task.startswith('b'):
+            elif 'buoyancy' in task:
                 center_zero=False
                 cmap = 'RdYlBu_r'
             savename_func = lambda write: '{:s}_{:06d}.png'.format(file_name, write)
             task = f['tasks'][task]
-            x = task.dims[2][0][:]
+            x = task.dims[1][0][:]
+            y = task.dims[2][0][:]
             z = task.dims[3][0][:]
-            mask = (slice(None), slice(None))
+            if x.size == 1:
+                x = y
+                mask = (0, slice(None), slice(None))
+            else:
+                mask = (slice(None), 0, slice(None))
             Lz = np.max(z)-np.min(z)
             Lx = np.max(x)-np.min(x)
             height = 1.6
@@ -54,7 +61,7 @@ def main(filename, start, count, tasks, output):
                 time = t[k]
                 fig, ax = plt.subplots(1, figsize=figsize)
                 ax.set_aspect(1)
-                pcm = ax.pcolormesh(x, z, np.squeeze(task[(k,*mask)]).T, shading='nearest',cmap=cmap)
+                pcm = ax.pcolormesh(x, z, task[(k,*mask)].T, shading='nearest',cmap=cmap)
                 pmin,pmax = pcm.get_clim()
                 if center_zero:
                     # use a CDF to find the
@@ -73,7 +80,7 @@ def main(filename, start, count, tasks, output):
                     cNorm = matplotlib.colors.TwoSlopeNorm(vmin=pmin, vcenter=0, vmax=pmax)
                 else:
                     cNorm = matplotlib.colors.Normalize(vmin=pmin, vmax=pmax)
-                pcm = ax.pcolormesh(x, z, np.squeeze(task[(k,*mask)]).T, shading='nearest',cmap=cmap, norm=cNorm)
+                pcm = ax.pcolormesh(x, z, task[(k,*mask)].T, shading='nearest',cmap=cmap, norm=cNorm)
                 ax_cb = fig.add_axes([0.91, 0.4, 0.02, 1-0.4*2])
                 cb = fig.colorbar(pcm, cax=ax_cb)
                 cb.formatter.set_scientific(True)
