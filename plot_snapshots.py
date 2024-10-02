@@ -21,10 +21,7 @@ logger = logging.getLogger(__name__)
 import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-# Plot settings
-dpi = 300
-
-def main(filename, start, count, tasks, output):
+def main(filename, start, count, tasks, output, dpi = 300):
     """Save plot of specified tasks for given range of analysis writes."""
 
     # Plot writes
@@ -57,6 +54,10 @@ def main(filename, start, count, tasks, output):
             Lx = np.max(x)-np.min(x)
             height = 1.6
             figsize = (height*(Lx/Lz), height+0.32)
+            nz = z.size
+            if nz > dpi:
+                dpi = np.ceil(nz/dpi)*dpi
+
             for k in range(len(t)):
                 time = t[k]
                 fig, ax = plt.subplots(1, figsize=figsize)
