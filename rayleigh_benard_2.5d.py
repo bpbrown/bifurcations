@@ -14,7 +14,7 @@ Options:
     --run_time_iter=<iter>      How many iterations to run for; defaults to np.inf
     --run_time_simtime=<run>    How long (simtime) to run for [default: 100]
 
-    --dt_output=<dt>            Cadence for data output (simtime); some data output more frequently [default: 1]
+    --dt_output=<dt>            Cadence for data output (simtime); some data output more frequently [default: 0.25]
 
     --timestepper=<ts>          Time stepping scheme to use [default: RK222]
     --safety=<safety>           CFL safety factor; if not set, a sensible default will be chosen based on scheme
