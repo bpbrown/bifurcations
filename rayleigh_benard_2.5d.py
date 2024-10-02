@@ -14,6 +14,11 @@ Options:
     --run_time_iter=<iter>      How many iterations to run for; defaults to np.inf
     --run_time_simtime=<run>    How long (simtime) to run for [default: 100]
 
+    --dt_output=<dt>            Cadence for data output (simtime); some data output more frequently [default: 1]
+
+    --timestepper=<ts>          Time stepping scheme to use [default: RK222]
+    --safety=<safety>           CFL safety factor; if not set, a sensible default will be chosen based on scheme
+
     --label=<label>             Additional label for run output directory
 """
 import numpy as np
@@ -43,11 +48,15 @@ data_dir = './'+sys.argv[0].split('.py')[0]
 data_dir += f'_Ra{args["--Rayleigh"]}'
 data_dir += f'_Nz{Nz}_Nx{Nx}'
 data_dir += f'_a{aspect}'
+data_dir += f'_{args["--timestepper"]}'
 if args['--label']:
     data_dir += '_{:s}'.format(args['--label'])
 import dedalus.tools.logging as dedalus_logging
 dedalus_logging.add_file_handler(data_dir+'/logs/dedalus_log', 'DEBUG')
 
+logger.debug(f'script {sys.argv[0]} called with arguments:')
+logger.debug(' '.join(map(str,sys.argv)))
+logger.debug(f'and full arguments:\n{args}')
 
 Rayleigh = float(args['--Rayleigh'])
 Prandtl = 1
@@ -59,8 +68,21 @@ if args['--run_time_iter']:
 else:
     stop_iter = np.inf
 
-timestepper = d3.SBDF2 #d3.RK222
-safety = 0.2
+if args['--timestepper'] == 'SBDF2':
+    timestepper = d3.SBDF2
+    safety = 0.1
+elif args['--timestepper'] == 'RK222':
+    timestepper = d3.RK222
+    safety = 0.2
+elif args['--timestepper'] == 'RK443':
+    timestepper = d3.RK443
+    safety = 0.2
+else:
+    raise ValueError(f'timestepper {args["--timestepper"]} not currently available')
+
+if args['--safety']:
+    safety = float(args['--safety'])
+
 max_timestep = 0.125
 dtype = np.float64
 
@@ -126,13 +148,15 @@ b['g'] *= z * (Lz - z) # Damp noise at walls
 b0 = dist.Field(name='b0', bases=(xbasis,zbasis))
 b0['g'] = 1 - z
 
-snapshots = solver.evaluator.add_file_handler(data_dir+'/snapshots', sim_dt=1, max_writes=20)
+output_dt = float(args['--dt_output'])
+
+snapshots = solver.evaluator.add_file_handler(data_dir+'/snapshots', sim_dt=output_dt, max_writes=20)
 snapshots.add_task(b, name='buoyancy')
 snapshots.add_task(b+b0, name='full buoyancy')
 snapshots.add_task(ey@ω, name='vorticity')
-snapshots.add_task(d3.div(u), name='divergence')
 
-scalars = solver.evaluator.add_file_handler(data_dir+'/scalars', iter=10)
+scalar_dt = min(output_dt/10, 1e-1)
+scalars = solver.evaluator.add_file_handler(data_dir+'/scalars', sim_dt=scalar_dt)
 scalars.add_task(volavg(np.sqrt(u@u)/nu), name='Re')
 scalars.add_task(volavg(d3.div(u)), name='div_u')
 scalars.add_task(np.sqrt(volavg(d3.div(u)**2)), name='|div_u|')
@@ -146,8 +170,9 @@ CFL = d3.CFL(solver, initial_dt=max_timestep,
              max_change=1.5, min_change=0.5, max_dt=max_timestep)
 CFL.add_velocity(u)
 
+report_cadence = 100
 # Flow properties
-flow = d3.GlobalFlowProperty(solver, cadence=10)
+flow = d3.GlobalFlowProperty(solver, cadence=report_cadence)
 flow.add_property(np.sqrt(u@u)/nu, name='Re')
 flow.add_property(np.abs(d3.div(u)), name='|div_u|')
 flow.add_property(np.sqrt(tau_u@tau_u)+np.sqrt(tau_b**2)+np.sqrt(tau_d**2), name='|taus|')
@@ -163,11 +188,14 @@ try:
             for var in vars:
                 var['g']
                 var['c']
-        if (solver.iteration-1) % 10 == 0:
+        if (solver.iteration-1) % report_cadence == 0:
             max_Re = flow.max('Re')
             max_divu = flow.max('|div_u|')
             max_taus = flow.max('|taus|')
-            logger.info(f'Iteration={solver.iteration:d}, Time={solver.sim_time:.2e}, dt={timestep:.2e}, max(Re)={max_Re:.2e}, divu={max_divu:.2e}, taus={max_taus:.2e}')
+            avg_Re = flow.volume_integral('Re')/V
+            avg_divu = flow.volume_integral('|div_u|')/V
+            avg_taus = flow.volume_integral('|taus|')/V
+            logger.info(f'Iteration={solver.iteration:d}, Time={solver.sim_time:.2e}, dt={timestep:.2e}, avg(Re)={avg_Re:.2e}, divu={avg_divu:.2e}, taus={avg_taus:.2e}')
 except:
     logger.error('Exception raised, triggering end of main loop.')
     raise
