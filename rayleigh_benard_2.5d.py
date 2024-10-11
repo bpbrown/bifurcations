@@ -71,6 +71,12 @@ else:
 if args['--timestepper'] == 'SBDF2':
     timestepper = d3.SBDF2
     safety = 0.1
+if args['--timestepper'] == 'SBDF3':
+    timestepper = d3.SBDF2
+    safety = 0.1
+if args['--timestepper'] == 'SBDF4':
+    timestepper = d3.SBDF2
+    safety = 0.1
 elif args['--timestepper'] == 'RK222':
     timestepper = d3.RK222
     safety = 0.2
