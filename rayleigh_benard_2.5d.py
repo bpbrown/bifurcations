@@ -128,6 +128,12 @@ tau_d = tau_c0 + lift1(tau_c1, -1)
 tau_b = lift(tau_b1, -1) + lift(tau_b2, -2)
 tau_u = lift(tau_u1, -1) + lift(tau_u2, -2)
 
+cross = lambda A, B : d3.cross(A,B)
+lap = lambda A: d3.lap(A)
+grad = lambda A: d3.Gradient(A, coords)
+dt_u = cross(u, ω) + nu*lap(u) - grad(p) + b*ez
+dt_b = - (u@grad(b)) + kappa*lap(b) + ez@u
+
 # Problem
 vars = [p, b, u]
 problem = d3.IVP(vars + taus, namespace=locals())
@@ -169,6 +175,9 @@ scalars.add_task(np.sqrt(volavg(d3.div(u)**2)), name='|div_u|')
 scalars.add_task(np.sqrt(volavg(tau_d**2)), name='|tau_d|')
 scalars.add_task(np.sqrt(volavg(tau_u@tau_u)), name='|tau_u|')
 scalars.add_task(np.sqrt(volavg(tau_b**2)), name='|tau_b|')
+scalars.add_task(np.sqrt(volavg(dt_u@dt_u)), name='|dt(u)|')
+scalars.add_task(np.sqrt(volavg(dt_b**2)), name='|dt(b)|')
+
 
 # CFL
 CFL = d3.CFL(solver, initial_dt=max_timestep,
