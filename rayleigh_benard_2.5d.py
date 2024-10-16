@@ -154,21 +154,31 @@ solver.stop_iteration = stop_iter
 
 # Initial conditions
 b.fill_random('g', seed=42, distribution='normal', scale=1e-3) # Random noise
-b.low_pass_filter(scales=0.75)
+b.low_pass_filter(scales=0.25)
 b['g'] *= z * (Lz - z) # Damp noise at walls
 
 b0 = dist.Field(name='b0', bases=(xbasis,zbasis))
 b0['g'] = 1 - z
 
 output_dt = float(args['--dt_output'])
+h_avg = lambda A: d3.Integrate(A, 'x')/Lx
 
 snapshots = solver.evaluator.add_file_handler(data_dir+'/snapshots', sim_dt=output_dt, max_writes=20)
 snapshots.add_task(b, name='buoyancy')
 snapshots.add_task(b+b0, name='full buoyancy')
 snapshots.add_task(ey@ω, name='vorticity')
 
+averages = solver.evaluator.add_file_handler(data_dir+'/averages', sim_dt=output_dt)
+averages.add_task(h_avg(b+b0), name='b(z)')
+averages.add_task(h_avg(u@ez*(b+b0)), name='F_h(z)')
+averages.add_task(h_avg(-kappa*ez@grad(b+b0)), name='F_κ(z)')
+
+
 scalar_dt = min(output_dt/10, 1e-1)
 scalars = solver.evaluator.add_file_handler(data_dir+'/scalars', sim_dt=scalar_dt)
+scalars.add_task(volavg(0.5*u@u), name='ΚΕ')
+scalars.add_task(volavg(b+b0), name='PΕ')
+scalars.add_task(np.sqrt(volavg(ω@ω)), name='enstrophy')
 scalars.add_task(volavg(np.sqrt(u@u)/nu), name='Re')
 scalars.add_task(volavg(d3.div(u)), name='div_u')
 scalars.add_task(np.sqrt(volavg(d3.div(u)**2)), name='|div_u|')
