@@ -115,6 +115,25 @@ ax_f[1].set_yscale('log')
 fig_f.tight_layout()
 fig_f.savefig('{:s}/Re.png'.format(str(output_path)), dpi=300)
 
+print(data)
+
+fig_f, ax_f = plt.subplots(nrows=2, sharex=True)
+for ax in ax_f:
+    ax.plot(t, data['ΚΕ'], label='KE')
+    ax.plot(t, data['PΕ']-data['PΕ'][0], label='PE')
+    ax_r = ax.twinx()
+    if subrange:
+        ax.set_xlim(t_min,t_max)
+    ax.set_xlabel('time')
+    ax.set_ylabel('energy')
+
+ax.legend()
+
+ax_f[1].set_yscale('log')
+
+fig_f.tight_layout()
+fig_f.savefig('{:s}/energies.png'.format(str(output_path)), dpi=300)
+
 benchmark_set = ['Re', '|tau_d|', '|tau_u|', '|tau_b|']
 
 i_ten = int(0.9*data[benchmark_set[0]].shape[0])
